@@ -1,0 +1,15 @@
+version: '2'
+
+services:
+
+    uberweb:
+        image: rugwacc23/uberweb:latest
+        links: 
+         - db
+        ports: 
+         - "4848:4848" 
+         - "8080:8080"
+         - "8181:8181"
+    db:
+        image: mongo:3.3
+

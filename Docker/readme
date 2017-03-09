@@ -1,0 +1,21 @@
+The connection between the app and the database seems to work, can be tested by creating a new user or adding a remote bike.
+
+Run the containers using 
+(sudo) docker-compose up		(or start etc. depending on the state of the containers)
+access the website via localhost:8080/UberForBikesWACC/		-> ports are forwarded
+
+To deploy the latest version of the app, build the UberForBikesWACC.war artifact in the UberForBikesWACC/Docker directory.
+Then run:  
+sudo docker-compose build
+sudo docker-compose up
+
+URL to access UberForBikes web app:
+    http://localhost:8080/UberForBikesWACC_war/
+
+In order to push (new) image to docker hub:
+    1. Go to the UberForBikesWACC/Docker folder.
+    2. Include the UberForBikesWACC.war file in the /Docker folder. Apparently files can only added to image if they are in the same directory as the Dockerfile.
+    3. Execute the following commands:
+        sudo docker build -t rugwacc23/uberweb:latest .  # The Dot in the end is important!
+        sudo docker login
+        sudo docker push rugwacc23/uberweb

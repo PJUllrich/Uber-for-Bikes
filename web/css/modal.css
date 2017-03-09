@@ -1,0 +1,46 @@
+.loginModal {
+    height: 325px;
+    width: 700px;
+    margin-left: 30%
+}
+
+.loginModal .modal-content {
+    height: 90%;
+    width: 70%;
+}
+
+.modal-body span {
+    color: red;
+}
+
+.subscribeModal {
+    height: 475px;
+    width: 700px;
+    margin-left: 25%;
+}
+
+.subscribeModal .modal-content {
+    height: 90%;
+    width: 70%;
+}
+
+.modal-footer span {
+    color: red;
+}
+
+.inputdemoIcons .inputIconDemo {
+    min-height: 48px;
+}
+
+.inputdemoIcons md-input-container:not(.md-input-invalid) > md-icon.email {
+    color: green;
+}
+
+.inputdemoIcons md-input-container:not(.md-input-invalid) > md-icon.name {
+    color: dodgerblue;
+}
+
+.inputdemoIcons md-input-container.md-input-invalid > md-icon.email,
+.inputdemoIcons md-input-container.md-input-invalid > md-icon.name {
+    color: red;
+}

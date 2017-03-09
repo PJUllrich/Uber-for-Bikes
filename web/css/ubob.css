@@ -1,0 +1,36 @@
+html, body { 
+	height : 100%; 
+	margin : 0; 
+	padding: 0; 
+}
+
+md-sidenav {
+    float: left;
+    width: 110px;
+    height: 100%;
+    padding: 20px;
+    background-color: antiquewhite;
+}
+
+md-sidenav md-list-item {
+    font-size: large;
+}
+
+md-content {
+    float: right;
+    background-color: aqua;
+    height: 100%;
+}
+
+ng-map {
+    height: 100%;
+    width: 100%;
+}
+
+#loginButton, #registerButton {
+    margin-right: 25px;
+}
+
+#registerButton {
+    background-color: chartreuse;
+}

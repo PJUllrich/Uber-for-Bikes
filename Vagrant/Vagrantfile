@@ -1,0 +1,171 @@
+# -*- mode: ruby -*-
+# vi: set ft=ruby :
+
+# Explanation of the Consul Ports used
+# HAProxy WebUI (1936). Shows the statistics of load balancing in a neat web UI.
+# Server RPC (Default 8300). This is used by servers to handle incoming requests from other agents. TCP only.
+# Serf LAN (Default 8301). This is used to handle gossip in the LAN. Required by all agents. TCP and UDP.
+# Serf WAN (Default 8302). This is used by servers to gossip over the WAN to other servers. TCP and UDP.
+# CLI RPC (Default 8400). This is used by all agents to handle RPC from the CLI. TCP only.
+# HTTP API (Default 8500). This is used by clients to talk to the HTTP API. TCP only.
+# DNS Interface (Default 8600). Used to resolve DNS queries. TCP and UDP.
+# UberForBikes (Default 8080). Used to communicate with our Webserver application.
+
+# The webserver UberForBikesWACC is available via   http://localhost:8080/UberForBikesWACC
+# The UI for Consul is available via                http://localhost:8500/ui
+
+$consul_setup = <<SHELL
+    # $1 = The Consul-VM ip
+    # $2 = Number of App-VMs
+
+    # Start the consul main app, expose the needed ports from inside the docker container to the vm. Show the UI on $vm_ip:8500/ui
+    docker run -d -h consul-leader -p 8300:8300 -p 8301:8301 -p 8301:8301/udp -p 8302:8302 -p 8302:8302/udp -p 8400:8400 -p 8500:8500 --name consul-leader progrium/consul -server -advertise $1 -bootstrap -ui-dir=/ui
+
+    sudo apt-get install -y unzip
+    sudo wget https://releases.hashicorp.com/consul-template/0.16.0/consul-template_0.16.0_linux_amd64.zip
+    unzip consul-template_0.16.0_linux_amd64.zip
+    rm -f consul-template_0.16.0_linux_amd64.zip
+
+    sudo ./consul-template -consul localhost:8500 -template "haproxy-template:haproxy.cfg" &
+
+    # Start HAProxy
+    docker run -d --name haproxy -p 1936:1936 -p 8080:8080 -v /home/vagrant/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg haproxy -f /usr/local/etc/haproxy/haproxy.cfg
+
+SHELL
+
+$connect_to_consul = <<SHELL
+    # $1 = The VMs Name
+    # $2 = The VMs IP
+    # $3 = The Consul-Leader IP
+    # $4 = The Number of App VM instances
+
+    echo "Connecting to Consul-Leader with"
+    echo "App Name: $1"
+    echo "App IP: $2"
+    echo "Consul-leader: $3"
+
+    # Connect to the Consul VM
+    docker run -d -h $1 --name consul -p 8300:8300 -p 8301:8301 -p 8301:8301/udp -p 8302:8302 -p 8302:8302/udp -p 8400:8400 -p 8500:8500 progrium/consul -server -advertise $2 -join $3
+
+    # Install and run the Registrator
+    docker run -d --name registrator --volume=/var/run/docker.sock:/tmp/docker.sock gliderlabs/registrator:latest consul://$2:8500
+SHELL
+
+$instance_setup = <<SHELL
+    # Start up MongoDB
+    docker run -d -p 27017:27017 --name c_mongo mongo:3.2 mongod --replSet "ubobSet"
+    # docker run -d --name c_mongo mongo:3.2 mongod
+
+    # Start up our own application and connect it to the MongoDB
+    # docker run -d -p 8080:8080 --name ubob --link c_mongo:db rugwacc23/uberweb:1.2
+SHELL
+
+$setup_mongo_cluster = <<SHELL
+    # $1..$x = Array of VM IPs running a Mongo DB
+
+    ips=("$@")
+
+    # ip in "$@"
+
+    for (( idx="$#" ; idx>0 ; idx-- ));
+    do
+        ip="${ips[idx-1]}"
+
+        if [ "$idx" -eq "$#" ]; then
+            #getMongoContainerIP="docker exec -i c_mongo hostname -i"
+            #mongoContainerIP=$($getMongoContainerIP)
+            # mongoMasterCmd='rs.initiate({ _id: "ubobSet", members: [{ _id: 0, host: "'"$mongoContainerIP"':27017" }], settings: { getLastErrorDefaults: { w: "$#" }}})'
+
+            # rs.initiate({ _id: "ubobSet", members: [{ _id: 0, host: "192.168.10.20:27017" }]})
+            mongoMasterCmd='rs.initiate({ _id: "ubobSet", members: [{ _id: 0, host: "'"$ip"':27017" }]})'
+
+            docker exec -i c_mongo mongo --eval "$mongoMasterCmd"
+            # docker exec -i c_mongo mongo --eval "$mongoMasterAdd"
+        else
+            mongoAddNode='rs.add("'$ip':27017")'
+
+            echo "$mongoAddNode"
+
+            docker exec -i c_mongo mongo --eval "$mongoAddNode"
+            docker exec -i c_mongo mongo --eval "$cmdSlaveOk"
+        fi
+    done
+SHELL
+
+Vagrant.configure('2') do |config|
+
+    require 'ipaddr'
+
+    $consul_ip = '192.168.10.10'
+    $instance_ip = IPAddr.new('192.168.10.20')
+    $num_instances = 3
+    $num_consul_instances = $num_instances + 1
+    $instance_ip_array = []
+
+    # Use this Linux build for each virtual machine
+    config.vm.box = 'ubuntu/trusty64'
+
+    config.vm.synced_folder '.', '/vagrant', disabled: true
+
+    # Set up the central Consul instance
+    config.vm.define consul_name = 'vm-consul' do |consul|
+        consul.vm.hostname = consul_name
+
+        # Set the consul ip and open port for the webserver (8080)
+        # The guest machine is this VM, and host is the PC on which
+        # the vagrant file is executed.
+        consul.vm.network 'private_network', ip: $consul_ip
+        consul.vm.network 'forwarded_port', guest: 8080, host: 8080
+        consul.vm.network 'forwarded_port', guest: 8500, host: 8500
+        consul.vm.network 'forwarded_port', guest: 1936, host: 1936
+
+        consul.vm.provision 'docker'
+
+        consul.vm.provision 'file',
+                            source: 'haproxy-template',
+                            destination: 'haproxy-template'
+
+        # consul.vm.provision 'file',
+        #                     source: 'consul-template',
+        #                     destination: 'consul-template'
+
+        consul.vm.provision 'shell',
+                            args: [$consul_ip, $num_consul_instances],
+                            inline: $consul_setup
+    end
+
+    # Set up the application instances
+    (1..$num_instances).each do |i|
+        config.vm.define instance_name = 'app-%02d' % [i] do |instance|
+            instance.vm.hostname = instance_name
+
+            $instance_ip_array.push($instance_ip.to_s)
+
+            instance.vm.network 'private_network', ip: $instance_ip.to_s
+            instance.vm.network 'forwarded_port', guest: 8080, host: (8080 + i)
+
+            instance.vm.provision 'docker',
+                                  run: 'always'
+
+            # Connect to Consul and start up Registrator
+            instance.vm.provision 'shell',
+                                  args: [instance_name, $instance_ip.to_s, $consul_ip, $num_consul_instances],
+                                  inline: $connect_to_consul,
+                                  run: 'always'
+
+            instance.vm.provision 'shell',
+                                  inline: $instance_setup,
+                                  run: 'always'
+
+            # if i == $num_instances
+            #     instance.vm.provision 'shell',
+            #                     args: $instance_ip_array,
+            #                     inline: $setup_mongo_cluster,
+            #                     run: 'always'
+            # end
+
+            # Increment the Instance IP by 1 for the next instance
+            $instance_ip = $instance_ip.succ
+        end
+    end
+end
